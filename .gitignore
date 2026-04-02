@@ -1,0 +1,22 @@
+# Virtual Environments & Caches
+*_env/
+hf_cache/
+__pycache__/
+
+# Data, Papers, and Archives
+*.pdf
+*.tar.gz
+*papers/
+selected_500/
+holdout_test_set/
+data/
+
+# Model Output and Training Data
+models/
+outputs/
+*.jsonl
+
+# Supercomputer Logs
+logs/
+*.out
+slurm-*.out
