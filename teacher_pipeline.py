@@ -4,12 +4,13 @@ import random
 import fitz # PyMuPDF
 from pydantic import BaseModel, Field
 from vllm import LLM, SamplingParams
+from vllm.sampling_params import StructuredOutputsParams
 
 # --- CONFIGURATION ---
-INPUT_DIR = "selected_500"
+INPUT_DIR = "/scratch/project_2017556/quantum-slm/selected_500"
 OUTPUT_FILE = "qml_finetune_dataset_v4.jsonl"
 # We use a 32B model for high reasoning. It requires multiple V100s.
-TEACHER_MODEL = "Qwen/Qwen2.5-32B-Instruct"
+TEACHER_MODEL = "Qwen/Qwen2.5-14B-Instruct"
 
 # --- PYDANTIC SCHEMA ---
 class QMLSchema(BaseModel):
@@ -25,9 +26,17 @@ def extract_text(pdf_path):
     try:
         doc = fitz.open(pdf_path)
         text = "\n".join([page.get_text() for page in doc[:4]]) # First 4 pages
+        
+        # --- THE FIX ---
+        # Cap the text at 24,000 characters (~6,000 tokens) 
+        # to guarantee it never blows up the 8192 context window.
+        if len(text) > 24000:
+            text = text[:24000]
+            
         return text.strip()
     except:
         return ""
+
 
 def apply_curriculum_split(text):
     """Enforces the Anti-Hallucination Split: 60% Golden, 20% Premature Cutoff, 20% Contextless"""
@@ -100,18 +109,27 @@ def main():
     # tensor_parallel_size=4 splits the massive 32B model across 4 V100 GPUs
     llm = LLM(
         model=TEACHER_MODEL, 
-        tensor_parallel_size=4, 
+        tensor_parallel_size=2, 
         dtype="half", 
         trust_remote_code=True,
         max_model_len=8192,             # Cap the memory allocation to 8k tokens
-        gpu_memory_utilization=0.85     # Leave 15% of VRAM free for safety
+        gpu_memory_utilization=0.85,     # Leave 15% of VRAM free for safety
+        enforce_eager=True,
+        disable_custom_all_reduce=True
     )
     
     # guided_json forces the LLM to output valid JSON matching our Pydantic schema
+    # 1. Extract the schema using Pydantic V2 syntax
+    schema_dict = QMLSchema.model_json_schema()
+    
+    # 2. Wrap it in the modern vLLM GuidedDecoding configuration
+    structured_outputs = StructuredOutputsParams(json=json.dumps(schema_dict))
+    
+    # 3. Pass it to the sampler
     sampling_params = SamplingParams(
         temperature=0.1, 
         max_tokens=800,
-        guided_json=QMLSchema.schema_json() 
+        structured_outputs=structured_outputs
     )
     
     print("🧠 Generating JSON annotations (This is blazing fast)...")

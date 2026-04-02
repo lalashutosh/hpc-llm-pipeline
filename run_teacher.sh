@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16       # More CPUs to feed the GPUs
 #SBATCH --mem=128G               # Lots of system RAM for loading weights
-#SBATCH --gres=gpu:v100:4        # CRITICAL: Request 4 Tesla V100 GPUs
+#SBATCH --gres=gpu:v100:2        # CRITICAL: Request 4 Tesla V100 GPUs
 
 # 1. Load the modules
 module load tykky
