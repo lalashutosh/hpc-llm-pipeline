@@ -1,0 +1,13 @@
+model_id: google/gemma-3-12b-it
+dataset: data/qml_finetune_dataset_v4.jsonl
+
+max_steps: 1000
+lr: 1e-4
+batch_size: 1
+grad_accum: 8
+max_length: 2048
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05

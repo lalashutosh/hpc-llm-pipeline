@@ -1,20 +1,32 @@
 import os
+os.environ["ACCELERATE_MIXED_PRECISION"] = "no"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
+
+from accelerate.utils import set_seed
+set_seed(42)
+
 import torch
+print("CUDA:", torch.cuda.is_available())
+print("BF16 supported:", torch.cuda.is_bf16_supported())
+print("Default dtype:", torch.get_default_dtype())
 from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, TrainingArguments
 from peft import LoraConfig, prepare_model_for_kbit_training, get_peft_model
-from trl import SFTTrainer
+from trl import SFTTrainer, SFTConfig
 
 # ==========================================
 # 🛑 DRY RUN vs PRODUCTION CONFIGURATION 🛑
 # ==========================================
-# CHANGE THESE 3 VARIABLES FOR THE FINAL RUN
+# CHANGE THESE 3 VARIABLES FOR THE FINAL RUN;w
+#
 MODEL_ID = "google/gemma-3-12b-it"       # PROD: "google/gemma-3-12b-it"
-DATA_PATH = "toy_data.jsonl"          # PROD: "qml_finetune_dataset_v4.jsonl"
-MAX_STEPS = 10                        # PROD: Set to None, and use num_train_epochs=3 below
+DATA_PATH = "qml_finetune_dataset_v4.jsonl"          # PROD: "qml_finetune_dataset_v4.jsonl"
+#MAX_STEPS = 10
+#:um_train_epochs = 3 PROD: Set to None, and use num_train_epochs=3 below
 # ==========================================
 
-OUTPUT_DIR = "./gemma-scholar-lora"
+OUTPUT_DIR = "./gemma-scholar-lora-1"
 
 def main():
     print(f"🚀 Loading Tokenizer: {MODEL_ID}")
@@ -37,13 +49,14 @@ def main():
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.float16 
+        bnb_4bit_compute_dtype=torch.float16
     )
     
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_ID,
         quantization_config=bnb_config,
-        device_map="auto" # Automatically splits the model across available GPUs
+        device_map="auto", # Automatically splits the model across available GPUs
+        dtype=torch.float16
     )
     
     # Prepares the 4-bit model to accept 16-bit LoRA gradients
@@ -59,35 +72,36 @@ def main():
         task_type="CAUSAL_LM"
     )
     
-    model = get_peft_model(model, peft_config)
-    model.print_trainable_parameters()
-
     print("⚙️  Configuring Training Arguments...")
-    training_args = TrainingArguments(
+    # CHANGED: We now use SFTConfig instead of TrainingArguments
+    training_args = SFTConfig(
         output_dir=OUTPUT_DIR,
-        per_device_train_batch_size=1,     # Keep batch size low to fit 12B in VRAM later
-        gradient_accumulation_steps=8,     # Accumulate to simulate a batch size of 8
-        max_steps=MAX_STEPS,               # 10 steps for dry run.
-        # num_train_epochs=3,              # <--- UNCOMMENT THIS FOR PRODUCTION
+        per_device_train_batch_size=1,
+        gradient_accumulation_steps=8,
+        num_train_epochs=3,
+
         learning_rate=2e-4,
-        logging_steps=1,                   # Log every step so we can watch the loss drop instantly
-        optim="paged_adamw_8bit",          # Offloads to CPU RAM if GPU memory spikes
-        fp16=True,                         # REQUIRED for V100s
-        bf16=False,                        
+        logging_steps=10,
+        optim="paged_adamw_8bit",
+        fp16=False,
+        bf16=True,
+        tf32=False,
         report_to="none",
         save_strategy="steps",
-        save_steps=50
+        save_steps=100,
+        # MOVED: These two variables now live inside the config!
+        dataset_text_field="text",
+        max_length=1024,
+        dataloader_num_workers=4
     )
+
 
     trainer = SFTTrainer(
         model=model,
         train_dataset=dataset,
         peft_config=peft_config,
-        dataset_text_field="text",
-        max_seq_length=2048,               # Caps context window to prevent OOM
         args=training_args
     )
-
     print("🔥 Igniting Training Loop...")
     trainer.train()
     

@@ -1,22 +1,30 @@
-# Virtual Environments & Caches
-*_env/
-hf_cache/
-__pycache__/
-
-# Data, Papers, and Archives
-*.pdf
-*.tar.gz
-*papers/
-selected_500/
-holdout_test_set/
-data/
-
-# Model Output and Training Data
-models/
+# =========================
+# Outputs / models
+# =========================
 outputs/
-*.jsonl
+gemma-scholar-lora*/
+hf_cache/
+mlruns/
+mlflow.db
 
-# Supercomputer Logs
-logs/
+# =========================
+# Environment
+# =========================
+v100_compute_env/
+
+# =========================
+# Data (optional)
+# =========================
+# data/qml_finetune_dataset_v4.jsonl  # uncomment if sensitive
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.pyc
+
+# =========================
+# Logs
+# =========================
 *.out
-slurm-*.out
+*.err
