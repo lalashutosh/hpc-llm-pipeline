@@ -1,4 +1,4 @@
-# HPC-Based Fine-Tuning Pipeline
+# HPC-Based Continual Fine-Tuning Pipeline
 
 ## What Is It?
 
